@@ -53,8 +53,8 @@ def insert_to_dynamodb(recipient, token):
         if time_diff_minutes<=5.0:
             print("Requested token within TTL")
         else:
-            uid = uuid.uuid4()
-            id = str(uid)
+            # uid = uuid.uuid4()
+            id = token
             table.update_item(
             Key={
                 'Email' : recipient
@@ -85,7 +85,7 @@ def prepare_and_send_email(recipient, token):
     BODY_HTML = """<html>
     <head></head>
     <body>
-      <h1>Verify link for Note Taking Application</h1>
+      <h1>Verify Link for Email Address</h1>
       <p>
         <br><br>
         """ + password_reset_link + """
