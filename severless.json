@@ -1,0 +1,243 @@
+{
+   "AWSTemplateFormatVersion":"2010-09-09",
+   "Parameters":{
+      "S3BUCKETLAMBDA":{
+         "Description":"S3 bucket for lambda artifact",
+         "Default": "csye6225.lambdabucket",
+         "Type":"String"
+      },
+      "DOMAINIDNAME":{
+         "Description":"S3 bucket for lambda artifact",
+         "Default": "prod.chunjunhu.me",
+         "Type":"String"
+      }
+   },
+   "Resources":{
+      "S3Bucket1": {
+         "Type": "AWS::S3::Bucket",
+         "Properties": {
+             "BucketName": { "Ref": "S3BUCKETLAMBDA" },
+             "AccessControl": "Private",
+             "BucketEncryption" : {
+                 "ServerSideEncryptionConfiguration": [
+                     {
+                         "ServerSideEncryptionByDefault": {
+                             "SSEAlgorithm": "AES256"
+                         }
+                     }
+                 ]
+             },
+             "LifecycleConfiguration": {
+                 "Rules": [
+                     {
+                         "Id": "Rule for assignment5",
+                         "Status": "Enabled",
+                         "Transitions": [
+                             {
+                                 "TransitionInDays": 30,
+                                 "StorageClass": "STANDARD_IA"
+                             }
+                         ],
+                         "ExpirationInDays": 365
+                     }
+                 ]
+             }
+         }
+     },
+     "myDynamoDBTable" : {
+      "Type" : "AWS::DynamoDB::Table",
+      "Properties" : {
+        "AttributeDefinitions" : [
+          {
+            "AttributeName" : "EmailAddress",
+            "AttributeType" : "S"   
+          }
+        ],
+        "KeySchema" : [
+          {
+            "AttributeName" : "EmailAddress",
+            "KeyType" : "HASH"
+          }
+        ],
+        "ProvisionedThroughput" : {
+          "ReadCapacityUnits" : "10",
+          "WriteCapacityUnits" : "10"
+        },
+        "TableName" : "csye6225"
+      }
+    },
+
+
+
+
+
+      "LambdaExecutionRole":{
+         "Type":"AWS::IAM::Role",
+         "Properties":{
+            "AssumeRolePolicyDocument":{
+               "Version":"2012-10-17",
+               "Statement":[
+                  {
+                     "Effect":"Allow",
+                     "Principal":{
+                        "Service":"lambda.amazonaws.com"
+                     },
+                     "Action":"sts:AssumeRole"
+                  }
+               ]
+            },
+            "RoleName":"LambdaExecutionRole"
+         }
+      },
+      "LambdaDynamoDBPolicy":{
+         "Type":"AWS::IAM::Policy",
+         "Properties":{
+            "PolicyName":"LambdaDynamoDBPolicy",
+            "PolicyDocument":{
+               "Version":"2012-10-17",
+               "Statement":[
+                  {
+                     "Effect":"Allow",
+                     "Action":[
+                        "dynamodb:BatchGetItem",
+                        "dynamodb:GetItem",
+                        "dynamodb:Query",
+                        "dynamodb:Scan",
+                        "dynamodb:BatchWriteItem",
+                        "dynamodb:PutItem",
+                        "dynamodb:UpdateItem"
+                     ],
+                     "Resource":{ "Fn::GetAtt" : [ "myDynamoDBTable", "Arn" ] }
+                  }
+               ]
+            },
+            "Roles":[
+               {
+                  "Ref":"LambdaExecutionRole"
+               }
+            ]
+         }
+      },
+      "LambdaLogsPolicy":{
+         "Type":"AWS::IAM::Policy",
+         "Properties":{
+            "PolicyName":"LambdaLogsPolicy",
+            "PolicyDocument":{
+               "Version":"2012-10-17",
+               "Statement":[
+                 {
+           "Action": [
+               "logs:CreateLogGroup",
+                "logs:CreateLogStream",
+                "logs:PutLogEvents"
+           ],
+           "Effect": "Allow",
+           "Resource": "arn:aws:logs:*:*:*"
+       }
+               ]
+            },
+            "Roles":[
+               {
+                  "Ref":"LambdaExecutionRole"
+               }
+            ]
+         }
+      },
+      "LambdaSESPolicy":{
+         "Type":"AWS::IAM::Policy",
+         "Properties":{
+            "PolicyName":"LambdaSESPolicy",
+            "PolicyDocument":{
+               "Version":"2012-10-17",
+               "Statement":[
+                  {
+                     "Effect":"Allow",
+                     "Action":[
+                        "ses:SendEmail",
+                        "ses:SendRawEmail"
+                     ],
+                     "Resource":"*"
+                  }
+               ]
+            },
+            "Roles":[
+               {
+                  "Ref":"LambdaExecutionRole"
+               }
+            ]
+         }
+      },
+
+      "AMIIDLookup": {
+         "Type": "AWS::Lambda::Function",
+         "Properties": {
+             "Handler": "index.handler",
+             "Role": {
+                 "Fn::GetAtt": [
+                     "LambdaExecutionRole",
+                     "Arn"
+                 ]
+             },
+             "Code": {
+               "S3Bucket":{
+                  "Ref":"S3BUCKETLAMBDA"
+               },
+               "S3Key":"cloud-ninja-lambda.zip"
+            
+             },
+             "Runtime": "nodejs12.x",
+             "Timeout": 25,
+             "TracingConfig": {
+                 "Mode": "Active"
+             },
+             "FunctionName":"email_verify",
+             "Environment":{
+                "Variables":{
+                   "DOMAIN_NAME":{
+                      "Ref":"DOMAINIDNAME"
+                   },
+                   "DYNAMO_TABLE":"csye6225"
+                }
+             }
+         }
+     },
+     "MySNSTopic" : {
+      "Type" : "AWS::SNS::Topic",
+      "Properties" : {
+        "Subscription" : [{
+          "Endpoint" : { "Fn::GetAtt" : [ "AMIIDLookup", "Arn" ] },
+          "Protocol" : "lambda"
+        }],
+        "TopicName" : "SampleTopic"
+         }
+      },
+
+
+      "LambdaResourcePolicy":{
+         "Type":"AWS::Lambda::Permission",
+         "Properties":{
+            "FunctionName":{
+               "Ref":"AMIIDLookup"
+            },
+            "Principal":"sns.amazonaws.com",
+            "Action":"lambda:InvokeFunction"
+         }
+      },
+      "LambdaSNSSubscription":{
+         "Type":"AWS::SNS::Subscription",
+         "DependsOn":[
+            "AMIIDLookup"
+         ],
+         "Properties":{
+            "Endpoint":{
+               "Fn::GetAtt":[
+                  "AMIIDLookup",
+                  "Arn"
+               ]
+            },
+            "Protocol":"lambda",
+            "TopicArn":{ "Fn::GetAtt" : [ "S3Bucket1", "Arn" ] }
+         }
+      }
+   }
+}
