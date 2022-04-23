@@ -74,7 +74,7 @@ def prepare_and_send_email(recipient, token):
     SENDER = "hu.chun@northeastern.edu"
 
 
-    password_reset_link = "http://prod.chunjunhu.me" + "/v1/verifyUserEmail?email=" + recipient +"&token=" + token
+    password_reset_link = "https://prod.chunjunhu.me" + "/v1/verifyUserEmail?email=" + recipient +"&token=" + token
 
     # The email body for recipients with non-HTML email clients.
     BODY_TEXT = (
